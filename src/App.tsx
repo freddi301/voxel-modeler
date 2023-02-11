@@ -1,43 +1,56 @@
 import React from "react";
 import { css } from "styled-components/macro";
 import { Vector3, Vector2, Matrix4, toRadians } from "@math.gl/core";
+import { useObjectEditor } from "./components/ObjectEditor";
+import { workspaceSchema } from "./components/workspace";
+import { PointGrid } from "./components/PointGrid";
+import { useElementSize } from "usehooks-ts";
 
 export default function App() {
-  const canvas = React.useMemo(() => ({ width: 400, height: 400 }), []);
+  const workspace = useObjectEditor(workspaceSchema);
+  const pointGrid = React.useMemo(() => {
+    const pointGrid = new PointGrid();
+    pointGrid.add(new Vector3(0, 0, 0));
+    pointGrid.add(new Vector3(0.1, 0, 0));
+    pointGrid.add(new Vector3(-0.1, 0, 0));
+    pointGrid.add(new Vector3(0, 0.1, 0));
+    pointGrid.add(new Vector3(0, -0.1, 0));
+    return pointGrid;
+  }, []);
   const {
-    points,
-    canvasPointToScreenPoint,
+    worldPointToScreenPoint,
     screenPointToCanvasPoint,
+    canvasPointToScreenPoint,
     screenPointToWorldPoint,
-    viewProjectionMatrix,
   } = React.useMemo(() => {
-    const points: Array<Vector3> = [
-      new Vector3(0, 0, 0),
-      new Vector3(0.1, 0, 0),
-      new Vector3(-0.1, 0, 0),
-      new Vector3(0, 0.1, 0),
-      new Vector3(0, -0.1, 0),
-    ];
+    const canvas = workspace.value.canvas;
+    const camera = workspace.value.camera;
 
     const viewMatrix = new Matrix4().lookAt({
-      eye: new Vector3(0, 0, 1),
-      center: new Vector3(0, 0, 0),
-      up: new Vector3(0, 1, 0),
+      eye: toVector3(camera.position),
+      center: toVector3(camera.target),
+      up: toVector3(camera.up),
     });
 
     const projectionMatrix = new Matrix4().perspective({
-      fovy: toRadians(60),
+      fovy: toRadians(camera.fov),
       aspect: canvas.width / canvas.height,
-      near: 0.3,
-      far: 1000,
+      near: camera.near,
+      far: camera.far,
     });
 
     const viewProjectionMatrix = viewMatrix
       .clone()
       .multiplyLeft(projectionMatrix);
 
+    const invertedViewProjectionMatrix = viewProjectionMatrix.clone().invert();
+
     const halfWidth = canvas.width / 2;
     const halfHeight = canvas.height / 2;
+
+    const worldPointToScreenPoint = (worldPoint: Vector3) => {
+      return worldPoint.clone().transform(viewProjectionMatrix);
+    };
 
     const screenPointToCanvasPoint = (screenPoint: Vector3): Vector2 => {
       return new Vector2(
@@ -57,20 +70,19 @@ export default function App() {
       );
     };
 
-    const invertedViewProjectionMatrix = viewProjectionMatrix.clone().invert();
-
     const screenPointToWorldPoint = (screenPoint: Vector3): Vector3 => {
       return screenPoint.clone().transform(invertedViewProjectionMatrix);
     };
 
     return {
-      points,
+      pointGrid,
       canvasPointToScreenPoint,
       screenPointToCanvasPoint,
       screenPointToWorldPoint,
       viewProjectionMatrix,
+      worldPointToScreenPoint,
     };
-  }, [canvas.height, canvas.width]);
+  }, [pointGrid, workspace.value.camera, workspace.value.canvas]);
 
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   React.useEffect(() => {
@@ -86,10 +98,17 @@ export default function App() {
 
       context.save();
       context.fillStyle = "black";
-      for (const point of points) {
-        const screenPoint = point.clone().transform(viewProjectionMatrix);
+      for (const worldPoint of pointGrid.iterate()) {
+        const screenPoint = worldPointToScreenPoint(worldPoint);
         const canvasPoint = screenPointToCanvasPoint(screenPoint);
-        context.fillRect(canvasPoint.x, canvasPoint.y, 1, 1);
+
+        context.fillRect(canvasPoint.x, canvasPoint.y, 2, 2);
+
+        // context.save();
+        // context.beginPath();
+        // context.arc(canvasPoint.x, canvasPoint.y, 3, 0, 2 * Math.PI, false);
+        // context.fill();
+        // context.restore();
       }
       context.restore();
     };
@@ -104,7 +123,7 @@ export default function App() {
     return () => {
       isActive = false;
     };
-  }, [points, screenPointToCanvasPoint, viewProjectionMatrix]);
+  }, [pointGrid, screenPointToCanvasPoint, worldPointToScreenPoint]);
   const getMouseCanvasPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const canvasPoint = new Vector2(
@@ -115,30 +134,100 @@ export default function App() {
   };
   const getMouseWorldPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvasPoint = getMouseCanvasPoint(event);
-    const screenPoint = canvasPointToScreenPoint(canvasPoint, 0.4);
+    const screenPoint = canvasPointToScreenPoint(
+      canvasPoint,
+      worldPointToScreenPoint(toVector3(workspace.value.camera.target)).z
+    );
     const worldPoint = screenPointToWorldPoint(screenPoint);
     return worldPoint;
   };
+  const [
+    convasContainerRef,
+    { width: canvasContainerWidth, height: canvasContainerHeight },
+  ] = useElementSize();
+  React.useEffect(() => {
+    workspace.onChange((workspace) => ({
+      ...workspace,
+      canvas: {
+        width: canvasContainerWidth,
+        height: canvasContainerHeight,
+      },
+    }));
+  }, [canvasContainerHeight, canvasContainerWidth, workspace.onChange]);
+
   return (
-    <div>
-      <canvas
-        ref={canvasRef}
-        width={400}
-        height={400}
+    <div
+      css={css`
+        width: 100vw;
+        height: 100vh;
+        display: grid;
+        grid-template-columns: 10% 1fr 10%;
+      `}
+    >
+      <div
         css={css`
-          border: 1px solid black;
+          grid-column: 1;
+          border-right: 1px solid black;
+          box-sizing: border-box;
         `}
-        onMouseMove={(event) => {
-          if (event.buttons === 1) {
+      ></div>
+      <div
+        ref={convasContainerRef}
+        css={css`
+          grid-column: 2;
+          position: relative;
+        `}
+      >
+        <canvas
+          ref={canvasRef}
+          width={workspace.value.canvas.width}
+          height={workspace.value.canvas.height}
+          css={css`
+            position: absolute;
+          `}
+          onMouseMove={(event) => {
+            if (event.buttons === 1) {
+              const worldPoint = getMouseWorldPoint(event);
+              pointGrid.add(worldPoint);
+            }
+          }}
+          onMouseDown={(event) => {
             const worldPoint = getMouseWorldPoint(event);
-            points.push(worldPoint);
-          }
-        }}
-        onMouseDown={(event) => {
-          const worldPoint = getMouseWorldPoint(event);
-          points.push(worldPoint);
-        }}
-      />
+            pointGrid.add(worldPoint);
+          }}
+          onWheel={(event) => {
+            const zoomDirection = event.deltaY > 0 ? -1 : 1;
+            const camera = workspace.value.camera;
+            const cameraDirection = toVector3(camera.target).subtract(
+              toVector3(camera.position)
+            );
+            const cameraPosition = toVector3(camera.position).add(
+              cameraDirection.multiplyByScalar(0.1 * zoomDirection)
+            );
+            if (cameraPosition.distance(toVector3(camera.target)) > camera.near)
+              workspace.onChange((workspace) => ({
+                ...workspace,
+                camera: {
+                  ...workspace.camera,
+                  position: cameraPosition,
+                },
+              }));
+          }}
+        />
+      </div>
+      <div
+        css={css`
+          grid-column: 3;
+          border-left: 1px solid black;
+          box-sizing: border-box;
+        `}
+      >
+        {workspace.render}
+      </div>
     </div>
   );
+}
+
+function toVector3({ x, y, z }: { x: number; y: number; z: number }) {
+  return new Vector3(x, y, z);
 }
