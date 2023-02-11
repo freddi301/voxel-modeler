@@ -1,11 +1,77 @@
 import React from "react";
 import { css } from "styled-components/macro";
-import { Point } from "./components/math";
+import { Vector3, Vector2, Matrix4, toRadians } from "@math.gl/core";
 
 export default function App() {
-  const [points, setPoints] = React.useState<Array<Point>>([
-    new Point(10, 10, 10),
-  ]);
+  const canvas = React.useMemo(() => ({ width: 400, height: 400 }), []);
+  const {
+    points,
+    canvasPointToScreenPoint,
+    screenPointToCanvasPoint,
+    screenPointToWorldPoint,
+    viewProjectionMatrix,
+  } = React.useMemo(() => {
+    const points: Array<Vector3> = [
+      new Vector3(0, 0, 0),
+      new Vector3(0.1, 0, 0),
+      new Vector3(-0.1, 0, 0),
+      new Vector3(0, 0.1, 0),
+      new Vector3(0, -0.1, 0),
+    ];
+
+    const viewMatrix = new Matrix4().lookAt({
+      eye: new Vector3(0, 0, 1),
+      center: new Vector3(0, 0, 0),
+      up: new Vector3(0, 1, 0),
+    });
+
+    const projectionMatrix = new Matrix4().perspective({
+      fovy: toRadians(60),
+      aspect: canvas.width / canvas.height,
+      near: 0.3,
+      far: 1000,
+    });
+
+    const viewProjectionMatrix = viewMatrix
+      .clone()
+      .multiplyLeft(projectionMatrix);
+
+    const halfWidth = canvas.width / 2;
+    const halfHeight = canvas.height / 2;
+
+    const screenPointToCanvasPoint = (screenPoint: Vector3): Vector2 => {
+      return new Vector2(
+        screenPoint.x * halfWidth + halfWidth,
+        -screenPoint.y * halfHeight + halfHeight
+      );
+    };
+
+    const canvasPointToScreenPoint = (
+      canvasPoint: Vector2,
+      z: number
+    ): Vector3 => {
+      return new Vector3(
+        (canvasPoint.x - halfWidth) / halfWidth,
+        -(canvasPoint.y - halfHeight) / halfHeight,
+        z
+      );
+    };
+
+    const invertedViewProjectionMatrix = viewProjectionMatrix.clone().invert();
+
+    const screenPointToWorldPoint = (screenPoint: Vector3): Vector3 => {
+      return screenPoint.clone().transform(invertedViewProjectionMatrix);
+    };
+
+    return {
+      points,
+      canvasPointToScreenPoint,
+      screenPointToCanvasPoint,
+      screenPointToWorldPoint,
+      viewProjectionMatrix,
+    };
+  }, [canvas.height, canvas.width]);
+
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   React.useEffect(() => {
     if (!canvasRef.current) return;
@@ -21,7 +87,9 @@ export default function App() {
       context.save();
       context.fillStyle = "black";
       for (const point of points) {
-        context.fillRect(point.x, point.y, 1, 1);
+        const screenPoint = point.clone().transform(viewProjectionMatrix);
+        const canvasPoint = screenPointToCanvasPoint(screenPoint);
+        context.fillRect(canvasPoint.x, canvasPoint.y, 1, 1);
       }
       context.restore();
     };
@@ -36,7 +104,21 @@ export default function App() {
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [points, screenPointToCanvasPoint, viewProjectionMatrix]);
+  const getMouseCanvasPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const canvasPoint = new Vector2(
+      event.clientX - rect.left,
+      event.clientY - rect.top
+    );
+    return canvasPoint;
+  };
+  const getMouseWorldPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvasPoint = getMouseCanvasPoint(event);
+    const screenPoint = canvasPointToScreenPoint(canvasPoint, 0.4);
+    const worldPoint = screenPointToWorldPoint(screenPoint);
+    return worldPoint;
+  };
   return (
     <div>
       <canvas
@@ -47,12 +129,14 @@ export default function App() {
           border: 1px solid black;
         `}
         onMouseMove={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
-          const x = event.clientX - rect.left;
-          const y = event.clientY - rect.top;
           if (event.buttons === 1) {
-            points.push(new Point(x, y, 0));
+            const worldPoint = getMouseWorldPoint(event);
+            points.push(worldPoint);
           }
+        }}
+        onMouseDown={(event) => {
+          const worldPoint = getMouseWorldPoint(event);
+          points.push(worldPoint);
         }}
       />
     </div>
