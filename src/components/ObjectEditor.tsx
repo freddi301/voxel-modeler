@@ -27,7 +27,7 @@ export function object<Fields extends Record<string, Schema<any>>>(
       Object.entries(fields).map(([k, v]) => [k, v.initial])
     ) as any,
     View({ label, value, onChange }) {
-      const [isOpen, setIsOpen] = React.useState(false);
+      const [isOpen, setIsOpen] = React.useState(true);
       return (
         <div>
           <div

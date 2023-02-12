@@ -1,4 +1,4 @@
-import { Vector3 } from "@math.gl/core";
+import { Vector3 } from "three";
 
 export class PointGrid {
   constructor(public readonly pointSize: number = 0.01) {}

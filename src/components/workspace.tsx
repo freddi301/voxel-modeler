@@ -8,7 +8,7 @@ const perspectiveCamera = object({
   target: vector3(0, 0, 0),
   up: vector3(0, 1, 0),
   fov: number(60),
-  near: number(0.3),
+  near: number(0.1),
   far: number(1000),
 });
 
