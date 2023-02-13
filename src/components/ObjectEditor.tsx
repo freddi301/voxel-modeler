@@ -17,7 +17,7 @@ type Schema<Value> = {
   }>;
 };
 
-type ValueOfSchema<S> = S extends Schema<infer Value> ? Value : never;
+export type ValueOfSchema<S> = S extends Schema<infer Value> ? Value : never;
 
 export function object<Fields extends Record<string, Schema<any>>>(
   fields: Fields
@@ -70,12 +70,13 @@ export function number(initial = 0): Schema<number> {
       React.useEffect(() => {
         setV(String(value));
       }, [value]);
+      const [step, setStep] = React.useState("0.1");
       return (
         <div>
           <strong>{label}: </strong>{" "}
           <input
             type="number"
-            step={0.01}
+            step={Number(step)}
             value={v}
             onChange={(event) => {
               const v = event.currentTarget.value;
@@ -83,6 +84,35 @@ export function number(initial = 0): Schema<number> {
               if (!isNaN(Number(v))) {
                 onChange(Number(v));
               }
+            }}
+          />{" "}
+          step{" "}
+          <input
+            type="number"
+            value={step}
+            onChange={(event) => setStep(event.currentTarget.value)}
+            css={css`
+              width: 50px;
+            `}
+          />
+        </div>
+      );
+    },
+  };
+}
+
+export function boolean(initial = false): Schema<boolean> {
+  return {
+    initial,
+    View({ label, value, onChange }) {
+      return (
+        <div>
+          <strong>{label}: </strong>{" "}
+          <input
+            type="checkbox"
+            checked={value}
+            onChange={(event) => {
+              onChange(event.currentTarget.checked);
             }}
           />
         </div>

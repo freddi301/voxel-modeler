@@ -1,175 +1,25 @@
 import React from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { css } from "styled-components/macro";
-import { useObjectEditor } from "./components/ObjectEditor";
-import { workspaceSchema } from "./components/workspace";
-import { PointGrid } from "./components/PointGrid";
-import { useElementSize } from "usehooks-ts";
+import { useObjectEditor, ValueOfSchema } from "./components/ObjectEditor";
 import { useOrbitControls } from "./components/useOrbitControls";
-import { Matrix4, Vector2, Vector3, MathUtils } from "three";
+import { workbenchSchema } from "./components/workbench";
+import { PointGrid } from "./components/PointGrid";
+import { DoubleSide, Vector2, Vector3 } from "three";
 
-export default function App() {
-  const workspace = useObjectEditor(workspaceSchema);
-  const pointGrid = React.useMemo(() => {
-    const pointGrid = new PointGrid();
-    pointGrid.add(new Vector3(0, 0, 0));
-    pointGrid.add(new Vector3(0.1, 0, 0));
-    pointGrid.add(new Vector3(-0.1, 0, 0));
-    pointGrid.add(new Vector3(0, 0.1, 0));
-    pointGrid.add(new Vector3(0, -0.1, 0));
-    return pointGrid;
-  }, []);
-  const {
-    worldPointToScreenPoint,
-    screenPointToCanvasPoint,
-    canvasPointToScreenPoint,
-    screenPointToWorldPoint,
-    viewProjectionMatrix,
-  } = React.useMemo(() => {
-    const canvas = workspace.value.canvas;
-    const camera = workspace.value.camera;
-
-    const viewMatrix = new Matrix4().lookAt(
-      toVector3(camera.position),
-      toVector3(camera.target),
-      toVector3(camera.up)
-    );
-
-    const projectionMatrix = makePerspective(
-      camera.fov,
-      canvas.width / canvas.height,
-      camera.near,
-      camera.far
-    );
-
-    const viewProjectionMatrix = new Matrix4()
-      // .makeTranslation(camera.position.x, camera.position.y, camera.position.z)
-      .multiply(viewMatrix)
-      .multiply(projectionMatrix);
-
-    const invertedViewProjectionMatrix = viewProjectionMatrix.clone().invert();
-
-    const halfWidth = canvas.width / 2;
-    const halfHeight = canvas.height / 2;
-
-    const worldPointToScreenPoint = (worldPoint: Vector3) => {
-      return worldPoint.clone().applyMatrix4(viewProjectionMatrix);
-    };
-
-    const screenPointToCanvasPoint = (screenPoint: Vector3): Vector2 => {
-      return new Vector2(
-        screenPoint.x * halfWidth + halfWidth,
-        -screenPoint.y * halfHeight + halfHeight
-      );
-    };
-
-    const canvasPointToScreenPoint = (
-      canvasPoint: Vector2,
-      z: number
-    ): Vector3 => {
-      return new Vector3(
-        (canvasPoint.x - halfWidth) / halfWidth,
-        -(canvasPoint.y - halfHeight) / halfHeight,
-        z
-      );
-    };
-
-    const screenPointToWorldPoint = (screenPoint: Vector3): Vector3 => {
-      return screenPoint.clone().applyMatrix4(invertedViewProjectionMatrix);
-    };
-
-    return {
-      pointGrid,
-      canvasPointToScreenPoint,
-      screenPointToCanvasPoint,
-      screenPointToWorldPoint,
-      viewProjectionMatrix,
-      worldPointToScreenPoint,
-    };
-  }, [pointGrid, workspace.value.camera, workspace.value.canvas]);
-
-  const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  React.useEffect(() => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const context = canvasRef.current.getContext("2d");
-    if (!context) return;
-    const render = () => {
-      console.log(viewProjectionMatrix);
-      context.save();
-      context.fillStyle = "white";
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.restore();
-
-      context.save();
-      context.fillStyle = "black";
-      for (const worldPoint of pointGrid.iterate()) {
-        const screenPoint = worldPointToScreenPoint(worldPoint);
-        const canvasPoint = screenPointToCanvasPoint(screenPoint);
-
-        console.log(worldPoint, screenPoint, canvasPoint);
-
-        context.fillRect(canvasPoint.x, canvasPoint.y, 4, 4);
-
-        // context.save();
-        // context.beginPath();
-        // context.arc(canvasPoint.x, canvasPoint.y, 3, 0, 2 * Math.PI, false);
-        // context.fill();
-        // context.restore();
-      }
-      context.restore();
-    };
-    let isActive = true;
-    const animate = () => {
-      render();
-      if (isActive) {
-        requestAnimationFrame(animate);
-      }
-    };
-    // animate();
-    render();
-    return () => {
-      isActive = false;
-    };
-  }, [pointGrid, screenPointToCanvasPoint, worldPointToScreenPoint]);
-  const getMouseCanvasPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const canvasPoint = new Vector2(
-      event.clientX - rect.left,
-      event.clientY - rect.top
-    );
-    return canvasPoint;
-  };
-  const getMouseWorldPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvasPoint = getMouseCanvasPoint(event);
-    const screenPoint = canvasPointToScreenPoint(
-      canvasPoint,
-      worldPointToScreenPoint(toVector3(workspace.value.camera.target)).z
-    );
-    const worldPoint = screenPointToWorldPoint(screenPoint);
-    return worldPoint;
-  };
-  const [
-    convasContainerRef,
-    { width: canvasContainerWidth, height: canvasContainerHeight },
-  ] = useElementSize();
-  React.useEffect(() => {
-    workspace.onChange((workspace) => ({
-      ...workspace,
-      canvas: {
-        width: canvasContainerWidth,
-        height: canvasContainerHeight,
-      },
-    }));
-  }, [canvasContainerHeight, canvasContainerWidth, workspace.onChange]);
-
+export function App() {
+  const workbench = useObjectEditor(workbenchSchema);
+  const [pointGrid, setPointGrid] = React.useState(
+    new PointGrid().add(new Vector3(0, 0, 0))
+  );
   const orbitControls = useOrbitControls();
-  // React.useEffect(() => {
-  //   workspace.onChange((workspace) => ({
-  //     ...workspace,
-  //     camera: { ...workspace.camera, ...orbitControls.camera },
-  //   }));
-  // }, [orbitControls.camera, workspace.onChange]);
-
+  React.useEffect(() => {
+    workbench.onChange((workbench) => ({
+      ...workbench,
+      camera: { ...workbench.camera, ...orbitControls.camera },
+      light: orbitControls.light,
+    }));
+  }, [orbitControls.camera, orbitControls.light, workbench.onChange]);
   return (
     <div
       css={css`
@@ -187,50 +37,170 @@ export default function App() {
         `}
       >
         <div>mouse left button to draw</div>
-        <div>ctrl + mouse to move</div>
+        <div>mouse right button to erase</div>
+        <div>shift + mouse to move</div>
         <div>ctrl + mouse to rotate</div>
-        <div>moue wheel to zoom</div>
+        <div>mouse wheel to zoom</div>
+        <div>shift + mouse wheel to go move</div>
+        <div>aly + mouse move to move schene light relative to camera</div>
+        <div>
+          <button
+            onClick={() => {
+              const a = document.createElement("a");
+              a.href = window.URL.createObjectURL(
+                new Blob(
+                  [
+                    JSON.stringify(
+                      Array.from(pointGrid.iterate()).map(
+                        ([, { x, y, z }]) => ({
+                          x,
+                          y,
+                          z,
+                        })
+                      )
+                    ),
+                  ],
+                  { type: "text/json" }
+                )
+              );
+              a.download = "model.json";
+              a.click();
+            }}
+          >
+            export
+          </button>
+          <button
+            onClick={() => {
+              const input = document.createElement("input");
+              input.type = "file";
+              input.accept = "application/json";
+              input.onchange = (event) => {
+                input.files![0].text().then((text: string) => {
+                  setPointGrid(
+                    JSON.parse(text).reduce(
+                      (pointGrid: PointGrid, { x, y, z }: any) =>
+                        pointGrid.add(new Vector3(x, y, z)),
+                      pointGrid
+                    )
+                  );
+                });
+              };
+              input.click();
+            }}
+          >
+            import
+          </button>
+        </div>
       </div>
       <div
-        ref={convasContainerRef}
         css={css`
           grid-column: 2;
           position: relative;
         `}
       >
-        <canvas
-          ref={canvasRef}
-          width={workspace.value.canvas.width}
-          height={workspace.value.canvas.height}
-          css={css`
-            position: absolute;
-          `}
+        <Canvas
           onMouseMove={(event) => {
             if (event.ctrlKey) {
               event.preventDefault();
-              orbitControls.setXRotation(
+              orbitControls.setXRotationClamped(
                 (xRotation) => xRotation + event.movementY * 0.1
               );
               orbitControls.setYRotation(
                 (yRotation) => yRotation + event.movementX * -0.1
               );
             } else if (event.shiftKey) {
+              orbitControls.moveBy(
+                event.movementX * 0.001,
+                event.movementY * 0.001,
+                0
+              );
               event.preventDefault();
-            } else if (event.buttons === 1) {
+            } else if (event.altKey) {
               event.preventDefault();
-              const worldPoint = getMouseWorldPoint(event);
-              pointGrid.add(worldPoint);
+              const rect = event.currentTarget.getBoundingClientRect();
+              const pointer = new Vector2(
+                -(((event.clientX - rect.left) / rect.width) * 2 - 1),
+                -(((event.clientY - rect.top) / rect.height) * 2 - 1)
+              );
+              orbitControls.setLightPosition(pointer);
             }
           }}
-          onMouseDown={(event) => {
-            const worldPoint = getMouseWorldPoint(event);
-            pointGrid.add(worldPoint);
-          }}
           onWheel={(event) => {
-            const zoomFactor = event.deltaY > 0 ? 1.1 : 0.9;
-            orbitControls.setZoom((zoom) => zoom * zoomFactor);
+            if (event.shiftKey) {
+              const delta = event.deltaY > 0 ? 0.01 : -0.01;
+              orbitControls.moveBy(0, 0, delta);
+            } else {
+              const zoomFactor = event.deltaY > 0 ? 1.1 : 0.9;
+              orbitControls.setZoom((zoom) => zoom * zoomFactor);
+            }
           }}
-        />
+        >
+          <CameraSync workbench={workbench.value} />
+          <ambientLight intensity={0.1} />
+          <directionalLight position={toVector3(workbench.value.light)} />
+          <gridHelper args={[2, 2 / pointGrid.pointSize]} />
+          <axesHelper
+            position={toVector3(workbench.value.camera.target)}
+            args={[0.1]}
+          />
+          {workbench.value.plane.show && (
+            <mesh
+              position={toVector3(workbench.value.camera.target)}
+              rotation={orbitControls.rotation}
+              onClick={(event) => {
+                const intersection = event.intersections[0];
+                setPointGrid(pointGrid.add(intersection.point));
+              }}
+            >
+              <planeGeometry args={[1, 1]} />
+              <meshStandardMaterial
+                side={DoubleSide}
+                transparent
+                opacity={0.5}
+                color={"orange"}
+              />
+            </mesh>
+          )}
+          {Array.from(pointGrid.iterate(), ([key, point]) => {
+            return (
+              <React.Fragment key={key}>
+                <mesh
+                  position={point}
+                  onClick={(event) => {
+                    const intersection = event.intersections[0];
+                    setPointGrid(
+                      pointGrid.add(
+                        intersection.object.position
+                          .clone()
+                          .add(
+                            intersection
+                              .face!.normal.clone()
+                              .multiplyScalar(pointGrid.pointSize)
+                          )
+                      )
+                    );
+                  }}
+                  onContextMenu={(event) => {
+                    event.nativeEvent.preventDefault();
+                    const intersection = event.intersections[0];
+                    setPointGrid(
+                      pointGrid.remove(intersection.object.position)
+                    );
+                  }}
+                >
+                  <boxGeometry
+                    args={[
+                      pointGrid.pointSize,
+                      pointGrid.pointSize,
+                      pointGrid.pointSize,
+                    ]}
+                  />
+                  <meshStandardMaterial />
+                </mesh>
+              </React.Fragment>
+            );
+          })}
+        </Canvas>
       </div>
       <div
         css={css`
@@ -239,32 +209,33 @@ export default function App() {
           box-sizing: border-box;
         `}
       >
-        {workspace.render}
+        {workbench.render}
       </div>
     </div>
   );
+}
+
+function CameraSync({
+  workbench,
+}: {
+  workbench: ValueOfSchema<typeof workbenchSchema>;
+}) {
+  useFrame((state) => {
+    state.camera.position.copy(toVector3(workbench.camera.position));
+    state.camera.up.copy(toVector3(workbench.camera.up));
+    state.camera.lookAt(toVector3(workbench.camera.target));
+    state.camera.near = workbench.camera.near;
+    state.camera.far = workbench.camera.far;
+    if (state.camera.type === "PerspectiveCamera")
+      state.camera.fov = workbench.camera.fov;
+  });
+  return <React.Fragment></React.Fragment>;
 }
 
 function toVector3({ x, y, z }: { x: number; y: number; z: number }) {
   return new Vector3(x, y, z);
 }
 
-function makePerspective(
-  fov: number,
-  aspect: number,
-  near: number,
-  far: number
-) {
-  const top = near * Math.tan(MathUtils.DEG2RAD * 0.5 * fov);
-  const height = 2 * top;
-  const width = aspect * height;
-  const left = -0.5 * width;
-  return new Matrix4().makePerspective(
-    left,
-    left + width,
-    top,
-    top - height,
-    near,
-    far
-  );
+function toXYZ(vec3: Vector3) {
+  return { x: vec3.x, y: vec3.y, z: vec3.z };
 }
