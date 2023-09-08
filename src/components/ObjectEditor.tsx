@@ -120,3 +120,29 @@ export function boolean(initial = false): Schema<boolean> {
     },
   };
 }
+
+export function string(initial = ""): Schema<string> {
+  return {
+    initial,
+    View({ label, value, onChange }) {
+      const [v, setV] = React.useState(String(value));
+      React.useEffect(() => {
+        setV(String(value));
+      }, [value]);
+      return (
+        <div>
+          <strong>{label}: </strong>{" "}
+          <input
+            type="text"
+            value={v}
+            onChange={(event) => {
+              const v = event.currentTarget.value;
+              setV(v);
+              onChange(v);
+            }}
+          />
+        </div>
+      );
+    },
+  };
+}
